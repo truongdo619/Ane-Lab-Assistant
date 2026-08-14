@@ -151,7 +151,20 @@ export function createOpenAICompatibleValidators<TConfig extends { apiKey?: stri
       }
 
       const status = extractStatusCode(e)
-      const chatOk = status === 400 || Boolean(status && status >= 200 && status < 300)
+
+      // NOTICE:
+      // 404 is treated as healthy because the probe model is chosen blindly.
+      // `pickValidationModel` takes the first listed model, and aggregator
+      // catalogs (NVIDIA NIM, OpenRouter) advertise models a given key is not
+      // entitled to call, so the probe can 404 on a key that works perfectly
+      // for the model the user actually selected. A rejected key answers 401
+      // or 403, so credentials are still validated.
+      // A wrong base URL also 404s, but the connectivity and model-list checks
+      // run alongside this one and fail in that case, so the provider is still
+      // reported invalid.
+      // Remove once the user's selected model reaches this validator and can
+      // be probed directly.
+      const chatOk = status === 400 || status === 404 || Boolean(status && status >= 200 && status < 300)
       return { connectivityOk: true, chatOk, errorMessage: errorMessageFrom(e) }
     }
   }

@@ -145,4 +145,62 @@ describe('createOpenAICompatibleValidators', () => {
       model: 'seed-2-0-pro-260328',
     }))
   })
+
+  describe('chat probe status handling', () => {
+    // ROOT CAUSE:
+    //
+    // A valid NVIDIA NIM key failed provider validation. `/v1/models` listed 102
+    // models, but the account was only entitled to call a subset, and
+    // `pickValidationModel` probes the first listed entry — `01-ai/yi-large` —
+    // which answered 404 "Not found for account".
+    //
+    // The probe accepted only 400 and 2xx as healthy:
+    //
+    //   const chatOk = status === 400 || Boolean(status && status >= 200 && status < 300)
+    //
+    // so an entitlement 404 on a model the user never selected marked the whole
+    // provider invalid.
+    //
+    // We fixed this by also accepting 404, which means the endpoint answered and
+    // the credentials were accepted. Rejected keys still answer 401/403 and still
+    // fail:
+    //
+    //   const chatOk = status === 400 || status === 404 || Boolean(...)
+    function chatValidatorWithStatus(status: number) {
+      listModelsMock.mockResolvedValue([{ id: 'some-model' }])
+      generateTextMock.mockRejectedValue(Object.assign(new Error(`HTTP ${status}`), {
+        cause: { status },
+      }))
+
+      const [, chatValidator] = getProviderValidators({
+        checks: [ProviderValidationCheck.Connectivity, ProviderValidationCheck.ChatCompletions],
+      })
+
+      return chatValidator
+    }
+
+    it('accepts a model the account is not entitled to call', async () => {
+      const validator = chatValidatorWithStatus(404)
+
+      const result = await validator.validator(config, provider, providerExtra, { t: mockT })
+
+      expect(result.valid).toBe(true)
+    })
+
+    it('still accepts a malformed probe request', async () => {
+      const validator = chatValidatorWithStatus(400)
+
+      const result = await validator.validator(config, provider, providerExtra, { t: mockT })
+
+      expect(result.valid).toBe(true)
+    })
+
+    it.each([401, 403])('still rejects credentials refused with %i', async (status) => {
+      const validator = chatValidatorWithStatus(status)
+
+      const result = await validator.validator(config, provider, providerExtra, { t: mockT })
+
+      expect(result.valid).toBe(false)
+    })
+  })
 })
