@@ -7,12 +7,16 @@ import { defineProvider } from '../registry'
 
 type OllamaThinkValue = boolean | 'high' | 'low' | 'medium'
 type OllamaThinkingMode = 'auto' | 'disable' | 'enable' | 'high' | 'low' | 'medium'
+type OllamaReasoningEffort = 'low' | 'none'
 
 const ollamaConfigSchema = z.object({
   baseUrl: z.string()
     .default('http://localhost:11434/v1/'),
+  // AIRI streams replies into TTS, so a reasoning phase reads as the character
+  // going silent: `reasoning` deltas are not rendered and not spoken. Default to
+  // suppression and let users opt back in per provider.
   thinkingMode: z.enum(['auto', 'disable', 'enable', 'low', 'medium', 'high'])
-    .default('auto'),
+    .default('disable'),
   headers: z.record(z.string(), z.string())
     .optional(),
 })
@@ -57,6 +61,25 @@ export function resolveOllamaThink(model: string, modeRaw: unknown): OllamaThink
     default:
       return undefined
   }
+}
+
+/**
+ * Resolves the OpenAI-compatible `reasoning_effort` value that actually turns
+ * thinking off, for the modes where the user asked for no reasoning.
+ *
+ * Returns `undefined` whenever the mode does not request suppression, so the
+ * caller can leave the field off the request entirely.
+ *
+ * @example
+ * resolveOllamaReasoningEffort('qwen3.5:4b', 'disable')
+ * // => 'none'
+ */
+export function resolveOllamaReasoningEffort(model: string, modeRaw: unknown): OllamaReasoningEffort | undefined {
+  if (normalizeOllamaThinkingMode(modeRaw) !== 'disable')
+    return undefined
+
+  // NOTICE: GPT-OSS has no "off" state; 'low' is the least it will reason.
+  return isGptOssModel(model) ? 'low' : 'none'
 }
 
 export const providerOllama = defineProvider<OllamaConfig>({
@@ -129,7 +152,22 @@ export const providerOllama = defineProvider<OllamaConfig>({
         if (think === undefined)
           return chatOptions
 
-        return { ...chatOptions, think }
+        // NOTICE:
+        // `think` alone does not disable reasoning on the endpoint this provider talks to.
+        // `think` belongs to Ollama's native /api/chat; the OpenAI-compatible
+        // /v1/chat/completions route this provider is configured against silently drops it
+        // and only honours `reasoning_effort`. Without this, a thinking model streams
+        // `reasoning` deltas the chat bubble does not render, so the reply looks empty
+        // until reasoning ends.
+        // Measured on Ollama 0.32.9 with qwen3.5:4b: `think: false` still produced 1115
+        // reasoning characters and delayed the first visible token past 50s, while
+        // `reasoning_effort: 'none'` produced 0 and answered in 1.3s.
+        // Remove once Ollama's OpenAI-compatible route honours `think`.
+        const reasoningEffort = resolveOllamaReasoningEffort(model, config.thinkingMode)
+        if (reasoningEffort === undefined)
+          return { ...chatOptions, think }
+
+        return { ...chatOptions, think, reasoning_effort: reasoningEffort }
       },
     }
   },
