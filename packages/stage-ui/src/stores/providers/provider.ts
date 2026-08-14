@@ -412,6 +412,28 @@ export const useProviderStore = defineStore('provider', () => {
     }
   }
 
+  /**
+   * Promotes a provider that has nothing to check straight to `configured`.
+   *
+   * Applies only to definitions that declare both `requiresCredentials: false`
+   * and no required validation, so there is no credential or reachability
+   * question left to answer for them.
+   */
+  function markConfiguredWhenNothingToValidate(providerId: string) {
+    const provider = providerConfigStore.getProvider(providerId)
+    if (!provider || provider.status === 'configured')
+      return
+
+    const definition = findProviderDefinition(providerId)
+    if (!definition || definition.requiresCredentials !== false)
+      return
+
+    if (definition.validationRequiredWhen?.(provider.config) === true)
+      return
+
+    providerConfigStore.setProviderStatus(providerId, 'configured')
+  }
+
   // Initialize provider configurations
   function initializeProvider(providerId: string) {
     if (!providerCredentials.value[providerId]) {
@@ -419,6 +441,19 @@ export const useProviderStore = defineStore('provider', () => {
       providerConfigStore.ensureProvider(providerId, definitionId, getDefaultProviderConfig(providerId))
     }
     initializeProviderRuntimeState(providerId)
+
+    // NOTICE:
+    // `ensureProvider` stores new providers as `unconfigured`, and the only
+    // promotion path is `updateConfigurationStatus`, which skips any provider
+    // without in-memory runtime state. That state does not survive a reload, so
+    // a provider needing neither credentials nor validation could stay
+    // `unconfigured` permanently and never appear in the module pickers, which
+    // list `status === 'configured'` providers only.
+    // Browser Web Speech transcription was unreachable this way: its settings
+    // page worked and transcribed, while Modules -> Hearing reported "No
+    // Providers Configured" and could only be fixed by editing localStorage.
+    // Remove if provider status stops depending on transient runtime state.
+    markConfiguredWhenNothingToValidate(providerId)
   }
 
   function stopRevalidationLoop(providerId: string) {
