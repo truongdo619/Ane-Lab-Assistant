@@ -28,6 +28,8 @@ const {
   activeCustomModelName,
   autoSendEnabled,
   autoSendDelay,
+  wakeWordEnabled,
+  wakeWordPhrases,
   confidenceThreshold,
   verboseJsonNotSupported,
 } = storeToRefs(hearingStore)
@@ -549,6 +551,20 @@ onUnmounted(() => {
               :max="10000"
               :step="100"
               :format-value="value => value === 0 ? 'Immediate' : `${(value / 1000).toFixed(1)}s`"
+            />
+
+            <FieldCheckbox
+              v-model="wakeWordEnabled"
+              label="Require a wake word"
+              description="Only respond to speech that starts with a wake phrase. Everything else you say is transcribed but ignored."
+            />
+
+            <FieldInput
+              v-if="wakeWordEnabled"
+              v-model="wakeWordPhrases"
+              label="Wake phrases"
+              description="Comma-separated. Add spellings the recogniser is likely to produce, since invented names are often transcribed differently (Ane, Anne, Annie). After a wake phrase, follow-up speech is accepted for 15 seconds without repeating it."
+              placeholder="hey ane, hey anne, hey annie"
             />
           </div>
         </div>

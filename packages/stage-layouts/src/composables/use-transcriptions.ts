@@ -1,6 +1,7 @@
 import type { MaybeRefOrGetter, Ref } from 'vue'
 
 import { useStreamingTranscriptionInput } from '@proj-airi/stage-ui/composables/use-streaming-transcription-input'
+import { matchWakeWord, parseWakePhrases } from '@proj-airi/stage-ui/libs/audio/wake-word'
 import { useHearingSpeechInputPipeline, useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
@@ -23,7 +24,7 @@ export function useTranscriptions(options: TranscriptionOptions) {
   const hearingPipeline = useHearingSpeechInputPipeline()
   const { removeStreamingTranscriptionConsumer, transcribeForMediaStream, stopStreamingTranscription } = hearingPipeline
   const { supportsStreamInput } = storeToRefs(hearingPipeline)
-  const { configured: hearingConfigured, autoSendEnabled, autoSendDelay } = storeToRefs(hearingStore)
+  const { configured: hearingConfigured, autoSendEnabled, autoSendDelay, wakeWordEnabled, wakeWordPhrases } = storeToRefs(hearingStore)
   const { enabled: hearingEnabled, stream } = storeToRefs(audioDeviceSettingsStore)
   const providersStore = useProviderStore()
   const speechOutputControlStore = useSpeechOutputControlStore()
@@ -32,6 +33,14 @@ export function useTranscriptions(options: TranscriptionOptions) {
   const isListening = ref(false)
   const transcriptionConsumerId = `interactive-area:${useId()}`
   const streamingInput = useStreamingTranscriptionInput(messageInput)
+
+  /**
+   * How long after a wake word the character keeps treating speech as
+   * addressed to it. Covers the natural pause in "Hey Ane ... what time is
+   * it?" and immediate follow-up commands, without leaving the gate open.
+   */
+  const WAKE_FOLLOW_UP_WINDOW_MS = 15_000
+  let awakeUntilMs = 0
 
   // Auto-send logic
   let autoSendTimeout: ReturnType<typeof setTimeout> | undefined
@@ -215,6 +224,33 @@ export function useTranscriptions(options: TranscriptionOptions) {
             return
           }
 
+          if (wakeWordEnabled.value) {
+            const match = matchWakeWord(delta, parseWakePhrases(wakeWordPhrases.value))
+            const awake = Date.now() < awakeUntilMs
+
+            if (!match.matched && !awake) {
+              console.info('Ignored transcription without wake word:', delta, { source: 'useTranscriptions' })
+              return
+            }
+
+            // Hearing the wake word opens a short follow-up window, so "Hey
+            // Ane" ... pause ... "what time is it?" works without repeating
+            // the phrase, and a matched command extends it for follow-ups.
+            awakeUntilMs = Date.now() + WAKE_FOLLOW_UP_WINDOW_MS
+
+            if (match.matched && match.remainder.length === 0) {
+              console.info('Wake word heard, waiting for a command', { source: 'useTranscriptions' })
+              return
+            }
+
+            const command = match.matched ? match.remainder : delta
+            if (streamingInput.commit(command)) {
+              console.info('Received final transcription:', command, { source: 'useTranscriptions' })
+              debouncedAutoSend()
+            }
+            return
+          }
+
           if (streamingInput.commit(delta)) {
             console.info('Received final transcription:', delta, { source: 'useTranscriptions' })
             debouncedAutoSend()
@@ -236,6 +272,14 @@ export function useTranscriptions(options: TranscriptionOptions) {
 
           if (utteranceContaminated)
             return
+
+          // While waiting for the wake word, keep unaddressed speech out of
+          // the composer; interims that open with the phrase may show, since
+          // that utterance is about to be committed.
+          if (wakeWordEnabled.value && Date.now() >= awakeUntilMs
+            && !matchWakeWord(text, parseWakePhrases(wakeWordPhrases.value)).matched) {
+            return
+          }
 
           streamingInput.replace(text)
         },

@@ -330,6 +330,12 @@ export const useHearingStore = defineStore('hearing-store', () => {
   const transcriptionModelSearchQuery = refManualReset<string>('')
   const autoSendEnabled = useLocalStorageManualReset<boolean>('settings/hearing/auto-send-enabled', false)
   const autoSendDelay = useLocalStorageManualReset<number>('settings/hearing/auto-send-delay', 2000) // Default 2 seconds
+  // Wake word gating happens at the transcript level: the recogniser keeps
+  // running, and utterances that do not open with an accepted phrase are
+  // dropped instead of sent. Comma-separated variants, because recognisers
+  // respell invented names ("Ane" arrives as "Anne" or "Annie").
+  const wakeWordEnabled = useLocalStorageManualReset<boolean>('settings/hearing/wake-word-enabled', false)
+  const wakeWordPhrases = useLocalStorageManualReset<string>('settings/hearing/wake-word-phrases', 'hey ane, hey anne, hey annie')
   const confidenceThreshold = useLocalStorageManualReset<number>('settings/hearing/confidence-threshold', CONFIDENCE_THRESHOLD_DISABLED)
   const verboseJsonNotSupported = ref(false)
 
@@ -547,6 +553,8 @@ export const useHearingStore = defineStore('hearing-store', () => {
     transcriptionModelSearchQuery,
     autoSendEnabled,
     autoSendDelay,
+    wakeWordEnabled,
+    wakeWordPhrases,
     confidenceThreshold,
     verboseJsonNotSupported,
 
