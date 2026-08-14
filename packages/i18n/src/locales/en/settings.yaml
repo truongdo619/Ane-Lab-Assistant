@@ -333,7 +333,7 @@ pages:
     delete: Delete
     delete_card: Delete Card
     delete_confirmation: Are you sure you want to delete this card?
-    description: Use AIRI character card presets
+    description: Use ANE character card presets
     description_label: Description
     drop_here: Drop to upload
     create_card: Create a new Card
@@ -408,7 +408,7 @@ pages:
       model: Speech / Model
       voice: Speech / Voice
     systemprompt: System Prompt
-    title: AIRI Card
+    title: Card
     try_different_search: Try a different search term
     export: Export
     exported: Card package exported
@@ -417,7 +417,7 @@ pages:
     import_missing_file: Card package is missing required files
     import_invalid_file: Card package file is invalid
     upload: Upload
-    upload_desc: Click or drag an AIRI card package to import
+    upload_desc: Click or drag an ANE card package to import
   memory:
     description: Where memories got stored, and organized
     title: Memory

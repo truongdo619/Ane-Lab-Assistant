@@ -192,7 +192,7 @@ watch(sendMode, () => {
         text="primary-600 dark:primary-100  placeholder:primary-500 dark:placeholder:primary-200"
         bg="transparent"
         min-h="[100px]" max-h="[300px]" w-full
-        rounded-t-xl p-4 font-medium pb="[60px]"
+        rounded-t-xl p-4 text-lg font-medium pb="[60px]"
         outline-none transition="all duration-250 ease-in-out placeholder:all placeholder:duration-250 placeholder:ease-in-out"
         :class="{
           'transition-colors-none placeholder:transition-colors-none': themeColorsHueDynamic,

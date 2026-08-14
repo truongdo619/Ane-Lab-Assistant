@@ -288,7 +288,7 @@ onMounted(() => {
           text="neutral-500 hover:neutral-600 dark:neutral-100 dark:hover:neutral-200 placeholder:neutral-400 placeholder:hover:neutral-500 placeholder:dark:neutral-300 placeholder:dark:hover:neutral-400"
           bg="neutral-100/80 dark:neutral-950/80"
           max-h="[10lh]" min-h="[calc(1lh+4px+4px)]"
-          w-full resize-none overflow-y-scroll rounded="[1lh]" px-4 py-0.5 outline-none backdrop-blur-md scrollbar-none
+          w-full resize-none overflow-y-scroll rounded="[1lh]" px-4 py-0.5 text-lg outline-none backdrop-blur-md scrollbar-none
           transition="all duration-250 ease-in-out placeholder:all placeholder:duration-250 placeholder:ease-in-out"
           :class="[themeColorsHueDynamic ? 'transition-colors-none placeholder:transition-colors-none' : '']"
           default-height="1lh"

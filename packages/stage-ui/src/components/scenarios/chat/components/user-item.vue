@@ -43,7 +43,7 @@ const containerClasses = computed(() => [
 ])
 
 const boxClasses = computed(() => [
-  props.variant === 'mobile' ? 'px-2 pt-2 pb-1 text-sm bg-neutral-100/90 dark:bg-neutral-800/90' : 'px-3 pt-3 pb-2 bg-neutral-100/80 dark:bg-neutral-800/80',
+  props.variant === 'mobile' ? 'px-2 pt-2 pb-1 text-xl bg-neutral-100/90 dark:bg-neutral-800/90' : 'px-3 pt-3 pb-2 text-2xl bg-neutral-100/80 dark:bg-neutral-800/80',
 ])
 const copyText = computed(() => getChatHistoryItemCopyText(props.message as ChatHistoryItem))
 </script>
@@ -67,7 +67,7 @@ const copyText = computed(() => getChatHistoryItemCopyText(props.message as Chat
           ]"
         >
           <div>
-            <span text-sm text="black/60 dark:white/65" font-normal class="inline <sm:hidden">{{ label }}</span>
+            <span text-base text="black/60 dark:white/65" font-normal class="inline <sm:hidden">{{ label }}</span>
           </div>
           <MarkdownRenderer
             :content="content as string"

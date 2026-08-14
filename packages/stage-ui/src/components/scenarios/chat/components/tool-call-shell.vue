@@ -53,7 +53,7 @@ defineSlots<{
             v-else
             class="i-solar:sledgehammer-bold-duotone mr-1 inline-block translate-y-1 op-50"
           />
-          <code class="truncate text-xs">{{ toolName }}</code>
+          <code class="truncate text-sm">{{ toolName }}</code>
           <slot name="labelSuffix" />
         </button>
         <slot name="actions" />
@@ -63,7 +63,7 @@ defineSlots<{
     <div
       :class="[
         'mt-2 w-full rounded-md p-2',
-        'bg-neutral-100/80 text-sm text-neutral-800 dark:bg-neutral-900/80 dark:text-neutral-200',
+        'bg-neutral-100/80 text-base text-neutral-800 dark:bg-neutral-900/80 dark:text-neutral-200',
       ]"
     >
       <slot />
