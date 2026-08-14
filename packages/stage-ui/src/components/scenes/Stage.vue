@@ -574,6 +574,22 @@ speechPipeline.on('onSpecial', (segment) => {
   }
 })
 
+// Track when assistant audio is in the room so the hearing pipeline can ignore
+// its own output. Without this, speaker audio is captured by the microphone,
+// transcribed, and auto-sent as the user's next message, which makes the
+// character reply to itself in a loop.
+speechPipeline.on('onPlaybackStart', () => {
+  speechOutputControlStore.beginAssistantPlayback()
+})
+
+// Interrupt and reject end a segment that never reaches `onPlaybackEnd`, so
+// both must release the counter or the microphone would stay suppressed.
+for (const event of ['onPlaybackEnd', 'onPlaybackInterrupt', 'onPlaybackReject'] as const) {
+  speechPipeline.on(event, () => {
+    speechOutputControlStore.endAssistantPlayback()
+  })
+}
+
 speechPipeline.on('onTurnEnd', (turnId) => {
   streamingControl.completeTurn(turnId)
 })

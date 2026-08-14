@@ -59,11 +59,48 @@ export const useSpeechOutputControlStore = defineStore('speech-output-control', 
     setSpeechMuted(!speechMuted.value)
   }
 
+  /**
+   * How long after playback stops the microphone should still be treated as
+   * hearing the assistant. Speaker audio reaches the microphone slightly after
+   * the playback node reports it finished, and the recognizer needs a moment to
+   * emit the tail of what it already captured.
+   */
+  const ECHO_TAIL_MS = 600
+
+  // Segments can overlap, so playback is counted rather than flagged: the
+  // assistant is audible until the last concurrent segment has finished.
+  const activePlaybackCount = ref(0)
+  let audibleUntilMs = 0
+
+  function beginAssistantPlayback() {
+    activePlaybackCount.value++
+  }
+
+  function endAssistantPlayback() {
+    activePlaybackCount.value = Math.max(0, activePlaybackCount.value - 1)
+    if (activePlaybackCount.value === 0)
+      audibleUntilMs = Date.now() + ECHO_TAIL_MS
+  }
+
+  /**
+   * Reports whether assistant audio is currently reaching the room.
+   *
+   * Deliberately a function rather than a computed: the tail window is
+   * wall-clock based, and callers query it imperatively from transcription
+   * callbacks at the moment a transcript arrives.
+   */
+  function isAssistantAudible() {
+    return activePlaybackCount.value > 0 || Date.now() < audibleUntilMs
+  }
+
   return {
     latestStopRequest,
     speechMuted,
     requestStopSpeaking,
     setSpeechMuted,
     toggleSpeechMuted,
+    beginAssistantPlayback,
+    endAssistantPlayback,
+    isAssistantAudible,
   }
 })

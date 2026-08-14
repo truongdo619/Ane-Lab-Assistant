@@ -120,3 +120,76 @@ describe('speech output control store', () => {
     })
   })
 })
+
+describe('assistant audibility tracking', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // ROOT CAUSE:
+  //
+  // With speakers instead of headphones, the microphone captured the assistant's
+  // own TTS output. Web Speech transcribed it, auto-send delivered it as the
+  // user's next message, and the character answered itself in a loop.
+  //
+  // Nothing in the hearing path knew playback was happening — there was no
+  // `isSpeaking` signal anywhere — and browser `echoCancellation` does not help,
+  // because it assumes playback and capture share one device.
+  //
+  // We fixed this by counting active playback in this store and having the
+  // transcription callbacks drop transcripts while the assistant is audible.
+  it('reports audible while a segment is playing', () => {
+    const store = useSpeechOutputControlStore()
+
+    expect(store.isAssistantAudible()).toBe(false)
+
+    store.beginAssistantPlayback()
+
+    expect(store.isAssistantAudible()).toBe(true)
+  })
+
+  it('stays audible until the last overlapping segment ends', () => {
+    const store = useSpeechOutputControlStore()
+
+    store.beginAssistantPlayback()
+    store.beginAssistantPlayback()
+    store.endAssistantPlayback()
+
+    expect(store.isAssistantAudible()).toBe(true)
+  })
+
+  it('keeps suppressing briefly after playback stops, then releases', () => {
+    const store = useSpeechOutputControlStore()
+
+    store.beginAssistantPlayback()
+    store.endAssistantPlayback()
+
+    // Speaker audio reaches the microphone after the playback node reports it
+    // finished, so the tail window must still suppress.
+    vi.advanceTimersByTime(100)
+    expect(store.isAssistantAudible()).toBe(true)
+
+    vi.advanceTimersByTime(1000)
+    expect(store.isAssistantAudible()).toBe(false)
+  })
+
+  it('does not latch suppression on unbalanced end events', () => {
+    const store = useSpeechOutputControlStore()
+
+    // Interrupt and reject can arrive without a matching start.
+    store.endAssistantPlayback()
+    store.endAssistantPlayback()
+    vi.advanceTimersByTime(1000)
+
+    store.beginAssistantPlayback()
+    store.endAssistantPlayback()
+    vi.advanceTimersByTime(1000)
+
+    expect(store.isAssistantAudible()).toBe(false)
+  })
+})

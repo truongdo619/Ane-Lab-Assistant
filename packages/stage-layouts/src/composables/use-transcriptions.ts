@@ -4,6 +4,7 @@ import { useStreamingTranscriptionInput } from '@proj-airi/stage-ui/composables/
 import { useHearingSpeechInputPipeline, useHearingStore } from '@proj-airi/stage-ui/stores/modules/hearing'
 import { useProviderStore } from '@proj-airi/stage-ui/stores/providers/provider'
 import { useSettingsAudioDevice } from '@proj-airi/stage-ui/stores/settings'
+import { useSpeechOutputControlStore } from '@proj-airi/stage-ui/stores/speech-output-control'
 import { until } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { nextTick, onScopeDispose, ref, toValue, useId, watch } from 'vue'
@@ -25,6 +26,7 @@ export function useTranscriptions(options: TranscriptionOptions) {
   const { configured: hearingConfigured, autoSendEnabled, autoSendDelay } = storeToRefs(hearingStore)
   const { enabled: hearingEnabled, stream } = storeToRefs(audioDeviceSettingsStore)
   const providersStore = useProviderStore()
+  const speechOutputControlStore = useSpeechOutputControlStore()
   const { askPermission, startStream } = audioDeviceSettingsStore
 
   const isListening = ref(false)
@@ -184,13 +186,37 @@ export function useTranscriptions(options: TranscriptionOptions) {
       await transcribeForMediaStream(stream.value, {
         consumerId: transcriptionConsumerId,
         onSentenceEnd: (delta) => {
+          // NOTICE:
+          // Transcripts produced while the assistant is audible are its own
+          // speech coming back through the microphone. Committing them makes
+          // the character answer itself, and with auto-send on that loops
+          // indefinitely. Browser `echoCancellation` does not prevent this
+          // because it assumes playback and capture share one device, which is
+          // false for speakers plus a separate USB microphone.
+          // Dropped rather than paused: stopping and restarting the recogniser
+          // mid-turn is fragile, and while the speaker is playing there is no
+          // way to tell the user's voice apart from the echo anyway.
+          // Remove if hardware echo cancellation ever makes the captured audio
+          // clean enough to attribute.
+          if (speechOutputControlStore.isAssistantAudible()) {
+            console.info('Ignored transcription while assistant audio was playing:', delta, { source: 'useTranscriptions' })
+            return
+          }
+
           if (streamingInput.commit(delta)) {
             console.info('Received final transcription:', delta, { source: 'useTranscriptions' })
             debouncedAutoSend()
           }
         },
         onSpeechEnd: streamingInput.clear,
-        onTranscriptionUpdate: streamingInput.replace,
+        onTranscriptionUpdate: (text) => {
+          // Interim results are echo too; showing them would flicker the
+          // assistant's own words into the composer before they are dropped.
+          if (speechOutputControlStore.isAssistantAudible())
+            return
+
+          streamingInput.replace(text)
+        },
       })
 
       // Only set listening to true if transcription started successfully
