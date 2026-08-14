@@ -182,24 +182,36 @@ export function useTranscriptions(options: TranscriptionOptions) {
     // Allow calling this even if already listening - transcribeForMediaStream will handle session reuse/restart
     // Call transcribeForMediaStream - it's async so we await it
     // Set listening state AFTER successful call
+    // NOTICE:
+    // Transcripts produced while the assistant is audible are its own speech
+    // coming back through the microphone. Committing them makes the character
+    // answer itself, and with auto-send on that loops indefinitely. Browser
+    // `echoCancellation` does not prevent this because it assumes playback and
+    // capture share one device, which is false for speakers plus a separate
+    // USB microphone.
+    //
+    // Checking audibility only at commit time is not enough: the recogniser
+    // finalises a sentence one or two seconds after the audio was captured, so
+    // a transcript of assistant speech can arrive after playback (and the echo
+    // tail window) has ended and pass the check. Interim updates, however,
+    // arrive while the audio is being heard — so an utterance that produced
+    // any interim while the assistant was audible is marked contaminated and
+    // dropped at commit regardless of when it finalises.
+    //
+    // Dropped rather than pausing the recogniser: restarting it mid-turn is
+    // fragile, and while the speaker is playing the user's voice cannot be
+    // told apart from the echo anyway.
+    // Remove if hardware echo cancellation ever makes the captured audio clean
+    // enough to attribute.
+    let utteranceContaminated = false
+
     try {
       await transcribeForMediaStream(stream.value, {
         consumerId: transcriptionConsumerId,
         onSentenceEnd: (delta) => {
-          // NOTICE:
-          // Transcripts produced while the assistant is audible are its own
-          // speech coming back through the microphone. Committing them makes
-          // the character answer itself, and with auto-send on that loops
-          // indefinitely. Browser `echoCancellation` does not prevent this
-          // because it assumes playback and capture share one device, which is
-          // false for speakers plus a separate USB microphone.
-          // Dropped rather than paused: stopping and restarting the recogniser
-          // mid-turn is fragile, and while the speaker is playing there is no
-          // way to tell the user's voice apart from the echo anyway.
-          // Remove if hardware echo cancellation ever makes the captured audio
-          // clean enough to attribute.
-          if (speechOutputControlStore.isAssistantAudible()) {
-            console.info('Ignored transcription while assistant audio was playing:', delta, { source: 'useTranscriptions' })
+          if (speechOutputControlStore.isAssistantAudible() || utteranceContaminated) {
+            console.info('Ignored transcription of assistant audio:', delta, { contaminated: utteranceContaminated, source: 'useTranscriptions' })
+            utteranceContaminated = false
             return
           }
 
@@ -208,11 +220,21 @@ export function useTranscriptions(options: TranscriptionOptions) {
             debouncedAutoSend()
           }
         },
-        onSpeechEnd: streamingInput.clear,
+        onSpeechEnd: () => {
+          // The utterance is over either way; the next one starts clean.
+          utteranceContaminated = false
+          streamingInput.clear()
+        },
         onTranscriptionUpdate: (text) => {
-          // Interim results are echo too; showing them would flicker the
-          // assistant's own words into the composer before they are dropped.
-          if (speechOutputControlStore.isAssistantAudible())
+          if (speechOutputControlStore.isAssistantAudible()) {
+            // Captured while the assistant was talking: poison the whole
+            // utterance so its late-arriving final transcript is dropped too,
+            // and keep the echo out of the composer.
+            utteranceContaminated = true
+            return
+          }
+
+          if (utteranceContaminated)
             return
 
           streamingInput.replace(text)
