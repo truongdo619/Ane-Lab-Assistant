@@ -436,7 +436,17 @@ export const useProviderStore = defineStore('provider', () => {
 
   // Initialize provider configurations
   function initializeProvider(providerId: string) {
-    if (!providerCredentials.value[providerId]) {
+    // NOTICE:
+    // Existence is decided from the stored provider, not from the derived
+    // `configs` map this used to read. `configs` is rebuilt by
+    // `Object.fromEntries` on each evaluation, and settings pages assign into
+    // it directly, so a config could appear there for a provider that was
+    // never created. Creation was then skipped, and nothing persisted:
+    // Browser Web Speech transcription rendered and transcribed correctly
+    // while `settings/providers/configured` stayed empty and Modules ->
+    // Hearing reported "No Providers Configured".
+    // Remove if settings pages stop writing into the derived map.
+    if (!providerConfigStore.getProvider(providerId)) {
       const definitionId = getProviderDefinitionId(providerId)
       providerConfigStore.ensureProvider(providerId, definitionId, getDefaultProviderConfig(providerId))
     }

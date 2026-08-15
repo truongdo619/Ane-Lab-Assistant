@@ -101,6 +101,27 @@ describe('initializeProvider configuration status', () => {
     expect(configStore.configuredProviders['browser-web-speech-api']).toBe(true)
   })
 
+  // Guards the store contract the Web Speech fix depends on: initialization
+  // must leave a provider in the persisted map, not merely a derived config.
+  //
+  // The failure it came from could only be reproduced in a browser, where a
+  // settings page holds a live reference to the derived `configs` map and its
+  // writes keep that lookup truthy without ever reaching storage. Here the
+  // computed is invalidated between statements, so the stale-map condition
+  // cannot be staged; see the browser walkthrough in the commit for the
+  // end-to-end evidence.
+  it('leaves the initialized provider in the persisted map', () => {
+    const store = useProviderStore()
+    const configStore = useProviderConfigStore()
+
+    store.initializeProvider('browser-web-speech-api')
+
+    expect(configStore.getProvider('browser-web-speech-api')).toMatchObject({
+      id: 'browser-web-speech-api',
+      definitionId: 'browser-web-speech-api',
+    })
+  })
+
   it('leaves a provider that needs credentials unconfigured', () => {
     const store = useProviderStore()
     const configStore = useProviderConfigStore()
