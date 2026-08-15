@@ -350,7 +350,17 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     applyIfPresent(activeVisionProvider, extension?.modules?.vision?.provider)
     applyIfPresent(activeVisionModel, extension?.modules?.vision?.model)
 
-    applyIfPresent(activeSpeechProvider, extension?.modules?.speech?.provider)
+    // NOTICE:
+    // `speech-noop` is the speech store's unset default, the equivalent of the
+    // empty string used by the other modules, and cards capture whatever is
+    // selected when they are created. The default card is therefore born
+    // holding `speech-noop` and re-applied it on every activation, switching
+    // TTS back off after the user had chosen a real speech provider.
+    // Treated as "no preference" for that reason; a card naming a real speech
+    // provider still overrides, and muting remains available separately
+    // through `settings/speech/output-muted`.
+    const cardSpeechProvider = extension?.modules?.speech?.provider
+    applyIfPresent(activeSpeechProvider, cardSpeechProvider === 'speech-noop' ? undefined : cardSpeechProvider)
     applyIfPresent(activeSpeechModel, extension?.modules?.speech?.model)
     applyIfPresent(activeSpeechVoiceId, extension?.modules?.speech?.voice_id)
 
