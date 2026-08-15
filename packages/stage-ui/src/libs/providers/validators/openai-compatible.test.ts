@@ -166,11 +166,24 @@ describe('createOpenAICompatibleValidators', () => {
     // fail:
     //
     //   const chatOk = status === 400 || status === 404 || Boolean(...)
-    function chatValidatorWithStatus(status: number) {
+    /**
+     * Builds a rejection shaped like `@xsai/shared`'s `APICallError`, which
+     * assigns the status on the error instance rather than nesting it under
+     * `cause`. The original tests here used a synthetic `cause: { status }`
+     * shape that xsai never produces, so they passed while the real path
+     * still failed.
+     */
+    function xsaiApiCallError(status: number) {
+      return Object.assign(new Error(`Remote sent ${status} response: {}`), {
+        response: { status },
+        statusCode: status,
+        responseBody: '{}',
+      })
+    }
+
+    function chatValidatorWithStatus(status: number, error: unknown = xsaiApiCallError(status)) {
       listModelsMock.mockResolvedValue([{ id: 'some-model' }])
-      generateTextMock.mockRejectedValue(Object.assign(new Error(`HTTP ${status}`), {
-        cause: { status },
-      }))
+      generateTextMock.mockRejectedValue(error)
 
       const [, chatValidator] = getProviderValidators({
         checks: [ProviderValidationCheck.Connectivity, ProviderValidationCheck.ChatCompletions],
@@ -197,6 +210,24 @@ describe('createOpenAICompatibleValidators', () => {
 
     it.each([401, 403])('still rejects credentials refused with %i', async (status) => {
       const validator = chatValidatorWithStatus(status)
+
+      const result = await validator.validator(config, provider, providerExtra, { t: mockT })
+
+      expect(result.valid).toBe(false)
+    })
+
+    it('reads the status from a cause-nested error too', async () => {
+      const validator = chatValidatorWithStatus(404, Object.assign(new Error('HTTP 404'), {
+        cause: { status: 404 },
+      }))
+
+      const result = await validator.validator(config, provider, providerExtra, { t: mockT })
+
+      expect(result.valid).toBe(true)
+    })
+
+    it('rejects when no status can be read at all', async () => {
+      const validator = chatValidatorWithStatus(0, new Error('socket hang up'))
 
       const result = await validator.validator(config, provider, providerExtra, { t: mockT })
 

@@ -24,19 +24,42 @@ interface OpenAICompatibleValidationOptions<TConfig extends { apiKey?: string, b
   modelListFailureReason?: (input: { config: TConfig, error: unknown, errorMessage: string }) => string
 }
 
+interface StatusCarrier {
+  status?: unknown
+  statusCode?: unknown
+  response?: { status?: unknown }
+}
+
+/**
+ * Reads the HTTP status out of a failed provider call.
+ *
+ * Checks the error itself and its `cause`, because the two error shapes this
+ * validator sees carry the status in different places.
+ */
 function extractStatusCode(error: unknown): number | null {
   if (!error)
     return null
 
-  const anyError = error as {
-    cause?: {
-      status?: unknown
-      statusCode?: unknown
-      response?: { status?: unknown }
-    }
-  }
+  // NOTICE:
+  // Only `cause` was inspected here originally, which silently dropped the
+  // status for every xsai failure. `@xsai/shared` throws `APICallError`, which
+  // assigns `statusCode` and `response` on the error instance rather than
+  // nesting them under `cause`:
+  //
+  //   this.response = options.response
+  //   this.statusCode = options.response.status
+  //
+  // The status therefore read as null, and the checks keyed on it never
+  // matched: a NVIDIA NIM key that could not call the blindly-probed first
+  // model failed validation on its 404, and the pre-existing tolerance for 400
+  // could not have worked either.
+  // Remove if provider errors ever converge on a single documented shape.
+  const anyError = error as StatusCarrier & { cause?: StatusCarrier }
 
   const candidates = [
+    anyError.statusCode,
+    anyError.status,
+    anyError.response?.status,
     anyError.cause?.status,
     anyError.cause?.statusCode,
     anyError.cause?.response?.status,
