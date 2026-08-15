@@ -326,15 +326,33 @@ export const useAiriCardStore = defineStore('airi-card', () => {
     if (!extension)
       return
 
-    activeConsciousnessProvider.value = extension?.modules?.consciousness?.provider
-    activeConsciousnessModel.value = extension?.modules?.consciousness?.model
+    // NOTICE:
+    // A card only overrides the module settings it actually carries. These
+    // assignments were unconditional, so a card that names no provider wrote
+    // an empty selection over the user's: the default card is created with
+    // `consciousness: { provider: '', model: '' }` captured before anything is
+    // configured, and re-applied those blanks on every activation. A freshly
+    // onboarded app therefore lost its provider and model on the next reload
+    // and could not chat until it was configured again by hand.
+    // Empty string is the unset default across these stores, so it means "no
+    // preference" rather than "clear the selection"; a card naming a real
+    // provider still overrides, which is how per-character models work. The
+    // display model and artistry blocks below were already guarded this way.
+    // Remove if card module settings ever become required rather than optional.
+    const applyIfPresent = <T>(target: { value: T }, next: T | undefined) => {
+      if (next !== undefined && next !== ('' as unknown as T))
+        target.value = next
+    }
 
-    activeVisionProvider.value = extension?.modules?.vision?.provider
-    activeVisionModel.value = extension?.modules?.vision?.model
+    applyIfPresent(activeConsciousnessProvider, extension?.modules?.consciousness?.provider)
+    applyIfPresent(activeConsciousnessModel, extension?.modules?.consciousness?.model)
 
-    activeSpeechProvider.value = extension?.modules?.speech?.provider
-    activeSpeechModel.value = extension?.modules?.speech?.model
-    activeSpeechVoiceId.value = extension?.modules?.speech?.voice_id
+    applyIfPresent(activeVisionProvider, extension?.modules?.vision?.provider)
+    applyIfPresent(activeVisionModel, extension?.modules?.vision?.model)
+
+    applyIfPresent(activeSpeechProvider, extension?.modules?.speech?.provider)
+    applyIfPresent(activeSpeechModel, extension?.modules?.speech?.model)
+    applyIfPresent(activeSpeechVoiceId, extension?.modules?.speech?.voice_id)
 
     // Apply body model if the card has a display model configured.
     // NOTICE: must set via store property directly (not storeToRefs .value) so Pinia's

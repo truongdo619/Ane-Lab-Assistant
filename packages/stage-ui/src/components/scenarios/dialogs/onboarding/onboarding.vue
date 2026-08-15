@@ -42,7 +42,6 @@ const { trackOnboardingCompleted, trackOnboardingStarted, trackOnboardingStepCom
 const providersStore = useProviderStore()
 
 const providerStore = useProviderConfigStore()
-const { configs: providers } = storeToRefs(providerStore)
 const { allChatProvidersMetadata } = storeToRefs(providersStore)
 const consciousnessStore = useConsciousnessStore()
 const {
@@ -104,12 +103,35 @@ async function saveProviderConfiguration(data: ProviderConfigData) {
     }
   }
 
-  providers.value[selectedProvider.value.id] = {
-    ...providers.value[selectedProvider.value.id],
-    ...config,
+  const providerId = selectedProvider.value.id
+
+  // NOTICE:
+  // `providers` here is the derived `configs` map, which `Object.fromEntries`
+  // rebuilds on every evaluation. Assigning a new key on it only mutated that
+  // throwaway object, so a provider configured during onboarding was never
+  // written to `settings/providers/configured`. Completing onboarding left the
+  // app unconfigured: credentials were gone, and the active provider and model
+  // were cleared on the next reload because the provider they referenced did
+  // not exist.
+  // Mutating an existing provider's field writes through, which is why editing
+  // an already-created provider on the settings pages persists and creating one
+  // here did not.
+  // Route the write through the store so the instance is created and the
+  // collected credentials are persisted with it.
+  const existing = providerStore.getProvider(providerId)
+  if (existing) {
+    // `getProvider` returns the stored object, so mutating its config writes
+    // through to persistence. `ensureProvider` is create-only and would ignore
+    // credentials re-entered after stepping back.
+    Object.assign(existing.config, config)
+  }
+  else {
+    providerStore.ensureProvider(providerId, providerId, { ...config })
   }
 
-  activeProvider.value = selectedProvider.value.id
+  providerStore.markProviderAdded(providerId)
+
+  activeProvider.value = providerId
 
   await nextTick()
 
